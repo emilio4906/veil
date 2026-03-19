@@ -1,0 +1,37 @@
+[package]
+name = "veil-server"
+description = "Veil E2E decryption server shim for LLM inference engines"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+veil-core = { path = "../veil-core" }
+
+# HTTP server
+axum = { version = "0.7", features = ["macros"] }
+tokio = { version = "1", features = ["full"] }
+tower = "0.4"
+tower-http = { version = "0.5", features = ["cors", "trace", "limit"] }
+
+# HTTP client (for forwarding to LLM backend)
+reqwest = { version = "0.12", features = ["json", "rustls-tls", "stream"], default-features = false }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+
+# Error
+anyhow = "1"
+
+# Config
+toml = "0.8"
+
+# Metrics
+prometheus = "0.13"

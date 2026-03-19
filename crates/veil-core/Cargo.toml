@@ -1,0 +1,31 @@
+[package]
+name = "veil-core"
+description = "Core cryptographic library for Veil E2E encrypted LLM inference"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+# Cryptography
+x25519-dalek = { version = "2", features = ["static_secrets"] }
+aes-gcm = "0.10"
+hkdf = "0.12"
+sha2 = "0.10"
+rand = "0.8"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+rmp-serde = "1"
+base64 = "0.22"
+
+# Security
+zeroize = { version = "1", features = ["derive"] }
+
+# Error handling
+thiserror = "1"
+serde_json = "1"
+
+[dev-dependencies]
+hex = "0.4"

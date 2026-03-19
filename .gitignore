@@ -1,0 +1,66 @@
+# Rust build artifacts
+/target/
+**/*.rs.bk
+*.pdb
+
+# Cargo lock is committed for binary crates (this is a workspace with binaries)
+# Cargo.lock is tracked
+
+# IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Editor backup files
+*.bak
+*.orig
+*.tmp
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Generated key files (never commit real keys!)
+*.key
+*.pem
+server-keys.json
+client-keys.json
+!docker/server.toml.example
+
+# Test output
+*.profraw
+*.profdata
+lcov.info
+tarpaulin-report.html
+
+# Benchmark output
+criterion/
+
+# Documentation build
+/docs/book/
+/docs/site/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+venv/
+.venv/
+*.egg
+
+# Docker
+*.pid
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db

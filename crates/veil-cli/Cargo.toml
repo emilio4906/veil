@@ -1,0 +1,38 @@
+[package]
+name = "veil-cli"
+description = "CLI tool for Veil E2E encrypted LLM inference"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "veil"
+path = "src/main.rs"
+
+[dependencies]
+veil-core = { path = "../veil-core" }
+veil-client = { path = "../veil-client" }
+veil-server = { path = "../veil-server" }
+
+# CLI
+clap = { version = "4", features = ["derive"] }
+
+# Async
+tokio = { version = "1", features = ["full"] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Error
+anyhow = "1"
+
+# Misc
+base64 = "0.22"
