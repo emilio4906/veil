@@ -1,0 +1,29 @@
+# Veil Server Configuration
+# Copy this file to server.toml and fill in your values
+
+[server]
+listen = "0.0.0.0:8481"
+
+[server.tls]
+# Optional: TLS termination at the Veil server
+# cert = "/etc/veil/tls/cert.pem"
+# key = "/etc/veil/tls/key.pem"
+
+[keys]
+# Generate with: veil keygen --format toml
+key_id = "default"
+# secret_key = "<base64-encoded-secret-key>"  # REQUIRED
+# public_key = "<base64-encoded-public-key>"
+
+[backend]
+# The actual LLM API endpoint to forward decrypted requests to
+url = "http://127.0.0.1:8000"
+timeout_secs = 120
+
+[metrics]
+enabled = true
+listen = "0.0.0.0:9090"
+
+[logging]
+level = "info"  # debug, info, warn, error
+format = "json"  # json, pretty
