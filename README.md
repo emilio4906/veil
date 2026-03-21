@@ -2,7 +2,7 @@
 
 # 🔐 Veil
 
-**End-to-end encryption for LLM inference — An example not a working Model**
+**End-to-end encryption for LLM inference — An example, not a working model**
 
 [![CI](https://github.com/oxifederation/veil/actions/workflows/ci.yml/badge.svg)](https://github.com/oxifederation/veil/actions/workflows/ci.yml)
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](LICENSE-MIT)
@@ -22,7 +22,7 @@
 When you send a prompt to an LLM API, your request passes through:
 
 ```
-Your App → App Server -> LLM Router(e.g OpenRouter) -> LLM Providers(AWS, Google, Azure, Oracle etc) → LLM Engine (ChatGPT, Claude, Grok etc)
+Your App → App Server → LLM Router (e.g. OpenRouter) → LLM Providers (AWS, Google, Azure, Oracle etc.) → LLM Engine (ChatGPT, Claude, Grok etc.)
 ```
 
 Every layer in that chain can read your prompts and responses in plaintext.
