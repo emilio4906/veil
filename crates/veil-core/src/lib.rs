@@ -30,7 +30,7 @@
 //! let server_kp = StaticKeyPair::generate();
 //!
 //! // Client creates session
-//! let client = ClientSession::new(
+//! let mut client = ClientSession::new(
 //!     &server_kp.public_base64(),
 //!     "key-001",
 //! ).unwrap();
@@ -47,6 +47,8 @@
 //!     &server_kp,
 //!     &metadata.ephemeral_key,
 //!     "key-001",
+//!     &metadata.request_id,
+//!     &metadata.timestamp,
 //! ).unwrap();
 //! let plaintext = server.decrypt_request(&envelope).unwrap();
 //! ```

@@ -59,6 +59,7 @@ pub async fn run(config: ServerConfig) -> Result<()> {
         backend_url: config.backend_url.clone(),
         http_client,
         max_request_age: config.max_request_age(),
+        replay_cache: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
     });
 
     // Build router

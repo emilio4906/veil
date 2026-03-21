@@ -12,7 +12,7 @@ fn test_nonces_are_unique() {
     let mut nonces = HashSet::new();
 
     for _ in 0..1000 {
-        let session = ClientSession::new(&server_pub, "key").expect("session");
+        let mut session = ClientSession::new(&server_pub, "key").expect("session");
         let (envelope, _) = session
             .encrypt_request(b"test", "model", None)
             .expect("encrypt");
@@ -33,8 +33,8 @@ fn test_ciphertext_indistinguishability() {
     let server_pub = server_kp.public_base64();
     let plaintext = b"identical plaintext";
 
-    let s1 = ClientSession::new(&server_pub, "key").unwrap();
-    let s2 = ClientSession::new(&server_pub, "key").unwrap();
+    let mut s1 = ClientSession::new(&server_pub, "key").unwrap();
+    let mut s2 = ClientSession::new(&server_pub, "key").unwrap();
 
     let (e1, _) = s1.encrypt_request(plaintext, "m", None).unwrap();
     let (e2, _) = s2.encrypt_request(plaintext, "m", None).unwrap();
@@ -58,7 +58,7 @@ fn test_ephemeral_keys_are_unique() {
     let mut keys = HashSet::new();
 
     for _ in 0..100 {
-        let session = ClientSession::new(&server_pub, "key").unwrap();
+        let mut session = ClientSession::new(&server_pub, "key").unwrap();
         let (_, meta) = session.encrypt_request(b"test", "m", None).unwrap();
         assert!(
             keys.insert(meta.ephemeral_key.clone()),
@@ -86,7 +86,7 @@ fn test_ciphertext_larger_than_plaintext() {
     let server_pub = server_kp.public_base64();
     let plaintext = b"hello world";
 
-    let session = ClientSession::new(&server_pub, "key").unwrap();
+    let mut session = ClientSession::new(&server_pub, "key").unwrap();
     let (envelope, _) = session.encrypt_request(plaintext, "m", None).unwrap();
 
     assert!(

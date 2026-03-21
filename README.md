@@ -35,7 +35,7 @@ between you and the model.
 ## The Solution
 
 Veil adds an **application-layer encryption envelope** around your LLM traffic.
-Only your application and the LLM inference engine can read the content:
+When veil-server runs in-process with the LLM engine, only your application and the LLM inference engine can read the content:
 
 ```
   Your App ──▶ 🔒 Encrypted Blob ──▶ 🔒 ──▶ 🔒 ──▶ LLM Engine
@@ -44,8 +44,9 @@ Only your application and the LLM inference engine can read the content:
        └──── 🔓 Decrypted Response ◀── 🔒 ◀── 🔒 ◀─────┘
 ```
 
-**Veil is to LLM inference what Signal is to messaging** — except the encryption
-happens at the API layer, requiring zero changes to your application code.
+**Veil is inspired by Signal's approach to messaging** — applying the same principle
+of application-layer encryption to LLM inference traffic, so middleware sees only
+opaque encrypted blobs regardless of the transport.
 
 ---
 
@@ -95,7 +96,8 @@ curl http://localhost:8080/v1/chat/completions \
   -d '{"model": "llama3", "messages": [{"role": "user", "content": "Hello!"}]}'
 ```
 
-Your traffic is now end-to-end encrypted. The proxy and shim handle all crypto transparently.
+Your traffic is now application-layer encrypted. The proxy and shim handle all crypto transparently.
+For full E2EE, deploy veil-server in-process with your LLM inference engine (see [Deployment Modes](#deployment-modes)).
 
 ---
 
@@ -117,11 +119,11 @@ Your traffic is now end-to-end encrypted. The proxy and shim handle all crypto t
 
 | Stage | Algorithm | Purpose |
 |-------|-----------|:--------|
-| Key Exchange | X25519 ECDH | Establish shared secret with forward secrecy |
+| Key Exchange | X25519 ECDH | Establish shared secret; client-side forward secrecy via ephemeral keys |
 | Key Derivation | HKDF-SHA256 | Derive directional encryption keys |
 | Encryption | AES-256-GCM | Authenticated encryption of prompts/responses |
 
-Every request uses a **fresh ephemeral key**, providing **perfect forward secrecy** —
+Every request uses a **fresh client ephemeral key**, providing **client-side forward secrecy** —
 compromising the server key does not reveal past conversations.
 
 📖 **Full protocol specification** → [ARCHITECTURE.md](ARCHITECTURE.md)
@@ -131,7 +133,7 @@ compromising the server key does not reveal past conversations.
 ## Features
 
 - 🔒 **End-to-end encryption** — prompts and responses encrypted through all middleware
-- 🔑 **Perfect forward secrecy** — fresh ephemeral keys per request
+- 🔑 **Client-side forward secrecy** — fresh ephemeral keys per request (server prekeys roadmapped for v0.2)
 - 🛡️ **Authenticated encryption** — AES-256-GCM detects any tampering
 - 🔄 **Drop-in proxy mode** — zero changes to existing OpenAI-compatible apps
 - ⚡ **Minimal overhead** — ~48 bytes per message, sub-millisecond crypto

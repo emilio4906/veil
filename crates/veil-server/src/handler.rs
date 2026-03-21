@@ -29,6 +29,9 @@ pub struct AppState {
     pub http_client: reqwest::Client,
     /// Maximum age of a request before it is rejected for replay protection.
     pub max_request_age: Duration,
+    /// Replay cache: tracks seen request IDs to prevent replay attacks.
+    /// Maps request_id → time received. Entries expire after max_request_age.
+    pub replay_cache: Arc<std::sync::Mutex<HashMap<String, Instant>>>,
 }
 
 /// Health check endpoint.
@@ -105,43 +108,96 @@ pub async fn inference(
         .unwrap_or(&state.active_key_id)
         .to_string();
 
-    // Replay protection: validate timestamp
-    if let Some(ts_header) = headers.get("X-Veil-Timestamp") {
-        if let Ok(ts_str) = ts_header.to_str() {
-            match chrono::DateTime::parse_from_rfc3339(ts_str) {
-                Ok(request_time) => {
-                    let now = Utc::now();
-                    let age = now
-                        .signed_duration_since(request_time.with_timezone(&Utc))
-                        .num_seconds();
-                    if age < 0 || age > state.max_request_age.as_secs() as i64 {
+    // Replay protection: validate timestamp and capture for AAD binding
+    let request_timestamp = match headers.get("X-Veil-Timestamp") {
+        Some(ts_header) => match ts_header.to_str() {
+            Ok(ts_str) => {
+                match chrono::DateTime::parse_from_rfc3339(ts_str) {
+                    Ok(request_time) => {
+                        let now = Utc::now();
+                        let age = now
+                            .signed_duration_since(request_time.with_timezone(&Utc))
+                            .num_seconds();
+                        if age < 0 || age > state.max_request_age.as_secs() as i64 {
+                            metrics::record_request("error");
+                            warn!(
+                                "Request timestamp too old or in future: age={}s, max={}s",
+                                age,
+                                state.max_request_age.as_secs()
+                            );
+                            return (
+                                StatusCode::BAD_REQUEST,
+                                Json(json!({"error": "Request expired or invalid timestamp"})),
+                            )
+                                .into_response();
+                        }
+                        ts_str.to_string()
+                    }
+                    Err(e) => {
                         metrics::record_request("error");
-                        warn!(
-                            "Request timestamp too old or in future: age={}s, max={}s",
-                            age,
-                            state.max_request_age.as_secs()
-                        );
+                        error!("Invalid timestamp format: {}", e);
                         return (
                             StatusCode::BAD_REQUEST,
-                            Json(json!({"error": "Request expired or invalid timestamp"})),
+                            Json(json!({"error": "Invalid request"})),
                         )
                             .into_response();
                     }
                 }
-                Err(e) => {
-                    metrics::record_request("error");
-                    error!("Invalid timestamp format: {}", e);
-                    return (
-                        StatusCode::BAD_REQUEST,
-                        Json(json!({"error": "Invalid request"})),
-                    )
-                        .into_response();
-                }
             }
+            Err(_) => {
+                metrics::record_request("error");
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({"error": "Invalid request"})),
+                )
+                    .into_response();
+            }
+        },
+        None => {
+            metrics::record_request("error");
+            warn!("Missing X-Veil-Timestamp header");
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({"error": "Missing X-Veil-Timestamp header"})),
+            )
+                .into_response();
         }
+    };
+
+    // Replay protection: validate request_id uniqueness
+    let request_id = match headers.get("X-Veil-Request-Id") {
+        Some(v) => v.to_str().unwrap_or_default().to_string(),
+        None => {
+            metrics::record_request("error");
+            warn!("Missing X-Veil-Request-Id header — replay protection cannot be enforced");
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({"error": "Missing X-Veil-Request-Id header"})),
+            )
+                .into_response();
+        }
+    };
+
+    {
+        let mut cache = state.replay_cache.lock().unwrap();
+        // Evict expired entries (lazy cleanup)
+        let max_age = state.max_request_age;
+        cache.retain(|_, received_at| received_at.elapsed() < max_age);
+        // Check for replay
+        if cache.contains_key(&request_id) {
+            metrics::record_request("error");
+            warn!(request_id = %request_id, "Replay attack detected — request_id already seen");
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({"error": "Duplicate request — replay detected"})),
+            )
+                .into_response();
+        }
+        // Record this request_id
+        cache.insert(request_id.clone(), Instant::now());
     }
 
-    debug!(model = %model, key_id = %key_id, "Processing Veil inference request");
+    debug!(model = %model, key_id = %key_id, request_id = %request_id, "Processing Veil inference request");
 
     // Look up the keypair for the requested key_id
     let server_keypair = match state.keypairs.get(&key_id) {
@@ -175,7 +231,7 @@ pub async fn inference(
 
     // Create server session and decrypt
     let decrypt_start = Instant::now();
-    let session = match ServerSession::new(server_keypair, &ephemeral_key, &key_id) {
+    let session = match ServerSession::new(server_keypair, &ephemeral_key, &key_id, &request_id, &request_timestamp) {
         Ok(s) => s,
         Err(e) => {
             metrics::record_request("error");

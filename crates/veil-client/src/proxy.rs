@@ -135,7 +135,7 @@ async fn process_request(
     let token_estimate = (body_bytes.len() / 4) as u32;
 
     // Create a new session (ephemeral key per request = forward secrecy)
-    let session = ClientSession::new(&state.config.server_public_key, &state.config.server_key_id)
+    let mut session = ClientSession::new(&state.config.server_public_key, &state.config.server_key_id)
         .context("Failed to create Veil session")?;
 
     // Encrypt the request

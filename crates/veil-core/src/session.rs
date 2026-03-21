@@ -34,6 +34,10 @@ pub struct ClientSession {
     session_keys: SessionKeys,
     ephemeral_public: PublicKey,
     server_key_id: String,
+    /// Cached request_id for AAD binding (set on encrypt_request).
+    request_id: String,
+    /// Cached timestamp for AAD binding (set on encrypt_request).
+    timestamp: String,
 }
 
 impl ClientSession {
@@ -54,6 +58,8 @@ impl ClientSession {
             session_keys,
             ephemeral_public,
             server_key_id: server_key_id.to_string(),
+            request_id: String::new(),
+            timestamp: String::new(),
         })
     }
 
@@ -61,11 +67,18 @@ impl ClientSession {
     ///
     /// Returns an envelope and metadata suitable for HTTP transport.
     pub fn encrypt_request(
-        &self,
+        &mut self,
         plaintext: &[u8],
         model: &str,
         token_estimate: Option<u32>,
     ) -> VeilResult<(VeilEnvelope, VeilMetadata)> {
+        // Generate request_id and timestamp FIRST — they are bound into the AAD
+        // so the server can verify the ciphertext is tied to this exact request.
+        let request_id = Uuid::new_v4().to_string();
+        let timestamp = Utc::now().to_rfc3339();
+        self.request_id = request_id.clone();
+        self.timestamp = timestamp.clone();
+
         let aad = self.build_aad(Direction::ClientToServer);
         let (nonce, ciphertext) =
             cipher::encrypt(&self.session_keys.client_to_server, plaintext, &aad)?;
@@ -77,8 +90,8 @@ impl ClientSession {
             ephemeral_key: BASE64.encode(self.ephemeral_public.as_bytes()),
             model: model.to_string(),
             token_estimate,
-            timestamp: Utc::now().to_rfc3339(),
-            request_id: Uuid::new_v4().to_string(),
+            timestamp,
+            request_id,
         };
 
         Ok((envelope, metadata))
@@ -114,9 +127,13 @@ impl ClientSession {
             Direction::ServerToClient => "s2c",
         };
         let ephemeral_public_b64 = BASE64.encode(self.ephemeral_public.as_bytes());
+        // AAD binds ciphertext to: protocol version, direction, key identity,
+        // ephemeral key, request ID, and timestamp — preventing cross-request
+        // ciphertext substitution even within the replay window.
         format!(
-            "veil-v{}-{}-{}-{}",
-            PROTOCOL_VERSION, dir_tag, self.server_key_id, ephemeral_public_b64
+            "veil-v{}-{}-{}-{}-{}-{}",
+            PROTOCOL_VERSION, dir_tag, self.server_key_id,
+            ephemeral_public_b64, self.request_id, self.timestamp
         )
         .into_bytes()
     }
@@ -130,6 +147,10 @@ pub struct ServerSession {
     session_keys: SessionKeys,
     key_id: String,
     ephemeral_public_b64: String,
+    /// Request ID from client metadata — bound into AAD for replay binding.
+    request_id: String,
+    /// Timestamp from client metadata — bound into AAD for temporal binding.
+    timestamp: String,
 }
 
 impl ServerSession {
@@ -143,6 +164,8 @@ impl ServerSession {
         server_keypair: &StaticKeyPair,
         client_ephemeral_b64: &str,
         key_id: &str,
+        request_id: &str,
+        timestamp: &str,
     ) -> VeilResult<Self> {
         let client_public = parse_public_key(client_ephemeral_b64)?;
         let shared_secret = server_keypair.diffie_hellman(&client_public);
@@ -152,6 +175,8 @@ impl ServerSession {
             session_keys,
             key_id: key_id.to_string(),
             ephemeral_public_b64: client_ephemeral_b64.to_string(),
+            request_id: request_id.to_string(),
+            timestamp: timestamp.to_string(),
         })
     }
 
@@ -188,8 +213,9 @@ impl ServerSession {
             Direction::ServerToClient => "s2c",
         };
         format!(
-            "veil-v{}-{}-{}-{}",
-            PROTOCOL_VERSION, dir_tag, self.key_id, self.ephemeral_public_b64
+            "veil-v{}-{}-{}-{}-{}-{}",
+            PROTOCOL_VERSION, dir_tag, self.key_id,
+            self.ephemeral_public_b64, self.request_id, self.timestamp
         )
         .into_bytes()
     }
@@ -207,7 +233,7 @@ mod tests {
         let server_pub_b64 = server_kp.public_base64();
 
         // Client creates session
-        let client_session = ClientSession::new(&server_pub_b64, "key-001").unwrap();
+        let mut client_session = ClientSession::new(&server_pub_b64, "key-001").unwrap();
 
         // Client encrypts a prompt
         let prompt = b"{\"model\": \"gpt-4\", \"messages\": [{\"role\": \"user\", \"content\": \"Hello!\"}]}";
@@ -224,7 +250,7 @@ mod tests {
 
         // Server creates session from client's ephemeral key
         let server_session =
-            ServerSession::new(&server_kp, &metadata.ephemeral_key, "key-001").unwrap();
+            ServerSession::new(&server_kp, &metadata.ephemeral_key, "key-001", &metadata.request_id, &metadata.timestamp).unwrap();
 
         // Server decrypts the request
         let decrypted_prompt = server_session.decrypt_request(&envelope).unwrap();
@@ -244,14 +270,14 @@ mod tests {
         let server_kp = StaticKeyPair::generate();
         let server_pub_b64 = server_kp.public_base64();
 
-        let session1 = ClientSession::new(&server_pub_b64, "key-001").unwrap();
+        let mut session1 = ClientSession::new(&server_pub_b64, "key-001").unwrap();
         let session2 = ClientSession::new(&server_pub_b64, "key-001").unwrap();
 
         let (envelope, _metadata) = session1.encrypt_request(b"secret", "gpt-4", None).unwrap();
 
         // session2 has different ephemeral key → different shared secret
         let server_session2 =
-            ServerSession::new(&server_kp, &session2.ephemeral_public_base64(), "key-001").unwrap();
+            ServerSession::new(&server_kp, &session2.ephemeral_public_base64(), "key-001", "test-req-id", "2026-01-01T00:00:00Z").unwrap();
 
         // Should fail to decrypt with wrong session
         assert!(server_session2.decrypt_request(&envelope).is_err());
@@ -260,7 +286,7 @@ mod tests {
     #[test]
     fn test_large_prompt_roundtrip() {
         let server_kp = StaticKeyPair::generate();
-        let client_session = ClientSession::new(&server_kp.public_base64(), "key-001").unwrap();
+        let mut client_session = ClientSession::new(&server_kp.public_base64(), "key-001").unwrap();
 
         // Simulate a large prompt (~100KB)
         let large_prompt = vec![b'A'; 100_000];
@@ -269,7 +295,7 @@ mod tests {
             .unwrap();
 
         let server_session =
-            ServerSession::new(&server_kp, &metadata.ephemeral_key, "key-001").unwrap();
+            ServerSession::new(&server_kp, &metadata.ephemeral_key, "key-001", &metadata.request_id, &metadata.timestamp).unwrap();
         let decrypted = server_session.decrypt_request(&envelope).unwrap();
 
         assert_eq!(decrypted, large_prompt);
@@ -278,7 +304,7 @@ mod tests {
     #[test]
     fn test_metadata_headers() {
         let server_kp = StaticKeyPair::generate();
-        let client_session = ClientSession::new(&server_kp.public_base64(), "prod-key-v2").unwrap();
+        let mut client_session = ClientSession::new(&server_kp.public_base64(), "prod-key-v2").unwrap();
 
         let (_, metadata) = client_session
             .encrypt_request(b"test", "claude-3-opus", Some(42))
@@ -303,7 +329,7 @@ mod tests {
         let server_pub_b64 = server_kp.public_base64();
 
         // Client uses key_id "key-001"
-        let client_session = ClientSession::new(&server_pub_b64, "key-001").unwrap();
+        let mut client_session = ClientSession::new(&server_pub_b64, "key-001").unwrap();
 
         let (envelope, metadata) = client_session
             .encrypt_request(b"secret data", "gpt-4", None)
@@ -311,7 +337,7 @@ mod tests {
 
         // Server uses a DIFFERENT key_id → AAD mismatch
         let server_session =
-            ServerSession::new(&server_kp, &metadata.ephemeral_key, "wrong-key-id").unwrap();
+            ServerSession::new(&server_kp, &metadata.ephemeral_key, "wrong-key-id", &metadata.request_id, &metadata.timestamp).unwrap();
 
         let result = server_session.decrypt_request(&envelope);
         assert!(
@@ -323,7 +349,7 @@ mod tests {
     #[test]
     fn test_timestamp_is_valid_iso8601() {
         let server_kp = StaticKeyPair::generate();
-        let client_session = ClientSession::new(&server_kp.public_base64(), "key-001").unwrap();
+        let mut client_session = ClientSession::new(&server_kp.public_base64(), "key-001").unwrap();
 
         let (_, metadata) = client_session
             .encrypt_request(b"test", "model", None)
@@ -337,7 +363,7 @@ mod tests {
     #[test]
     fn test_request_id_is_valid_uuid() {
         let server_kp = StaticKeyPair::generate();
-        let client_session = ClientSession::new(&server_kp.public_base64(), "key-001").unwrap();
+        let mut client_session = ClientSession::new(&server_kp.public_base64(), "key-001").unwrap();
 
         let (_, metadata) = client_session
             .encrypt_request(b"test", "model", None)

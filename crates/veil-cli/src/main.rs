@@ -195,7 +195,7 @@ fn cmd_test_roundtrip(message: &str) -> Result<()> {
     println!("   Public Key: {}", server_kp.public_base64());
 
     // Create client session
-    let client_session = ClientSession::new(&server_kp.public_base64(), "test-key")
+    let mut client_session = ClientSession::new(&server_kp.public_base64(), "test-key")
         .context("Failed to create client session")?;
     println!("✅ Client session created (ephemeral key exchange done)");
 
@@ -209,7 +209,7 @@ fn cmd_test_roundtrip(message: &str) -> Result<()> {
     println!("   Model: {}", metadata.model);
 
     // Create server session
-    let server_session = ServerSession::new(&server_kp, &metadata.ephemeral_key, "test-key")
+    let server_session = ServerSession::new(&server_kp, &metadata.ephemeral_key, "test-key", &metadata.request_id, &metadata.timestamp)
         .context("Failed to create server session")?;
     println!("✅ Server session created");
 
@@ -248,7 +248,7 @@ fn cmd_test_roundtrip(message: &str) -> Result<()> {
 }
 
 fn cmd_encrypt(public_key: &str, input: &str) -> Result<()> {
-    let session = ClientSession::new(public_key, "cli").context("Failed to create session")?;
+    let mut session = ClientSession::new(public_key, "cli").context("Failed to create session")?;
 
     let (envelope, metadata) = session
         .encrypt_request(input.as_bytes(), "cli", None)
