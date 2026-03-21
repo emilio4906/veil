@@ -6,7 +6,7 @@
 use hkdf::Hkdf;
 use sha2::Sha256;
 use x25519_dalek::SharedSecret;
-use zeroize::ZeroizeOnDrop;
+use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use crate::error::{VeilError, VeilResult};
 
@@ -21,14 +21,12 @@ const CLIENT_TO_SERVER_INFO: &[u8] = b"veil-c2s";
 const SERVER_TO_CLIENT_INFO: &[u8] = b"veil-s2c";
 
 /// A pair of derived session keys — one for each direction.
-/// Zeroized on drop for security.
-#[derive(ZeroizeOnDrop)]
+/// Both keys are securely zeroized from memory on drop.
+#[derive(Zeroize, ZeroizeOnDrop)]
 pub struct SessionKeys {
     /// Key for encrypting client→server traffic.
-    #[zeroize(skip)]
     pub client_to_server: [u8; KEY_LEN],
     /// Key for encrypting server→client traffic.
-    #[zeroize(skip)]
     pub server_to_client: [u8; KEY_LEN],
 }
 
@@ -109,4 +107,27 @@ mod tests {
 
         assert_ne!(keys1.client_to_server, keys2.client_to_server);
     }
+
+    #[test]
+    fn test_session_keys_zeroize() {
+        use zeroize::Zeroize;
+
+        let server = StaticKeyPair::generate();
+        let client = EphemeralKeyPair::generate();
+
+        let shared = client.diffie_hellman(server.public_key()).unwrap();
+        let mut keys = SessionKeys::derive(&shared).unwrap();
+
+        // Keys should be non-zero after derivation
+        assert_ne!(keys.client_to_server, [0u8; 32]);
+        assert_ne!(keys.server_to_client, [0u8; 32]);
+
+        // Manually zeroize
+        keys.zeroize();
+
+        // After zeroize, both keys must be all zeros
+        assert_eq!(keys.client_to_server, [0u8; 32], "c2s key not zeroized");
+        assert_eq!(keys.server_to_client, [0u8; 32], "s2c key not zeroized");
+    }
+
 }
